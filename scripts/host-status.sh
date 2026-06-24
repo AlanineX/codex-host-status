@@ -41,6 +41,73 @@ segment() {
     out="${out}$(style "$color")${text}$(reset_style)"
 }
 
+sql_escape() {
+    printf '%s' "$1" | sed "s/'/''/g"
+}
+
+codex_rollout_path() {
+    local codex_home state_db cwd cwd_sql rollout
+    codex_home="${CODEX_HOME:-${HOME}/.codex}"
+    state_db="${codex_home%/}/state_5.sqlite"
+
+    if [ -n "${CODEX_STATUS_ROLLOUT_PATH:-}" ] && [ -r "$CODEX_STATUS_ROLLOUT_PATH" ]; then
+        printf '%s\n' "$CODEX_STATUS_ROLLOUT_PATH"
+        return 0
+    fi
+
+    command -v sqlite3 >/dev/null 2>&1 || return 1
+    [ -r "$state_db" ] || return 1
+
+    cwd="${CODEX_STATUS_CWD:-${PWD:-}}"
+    if [ -n "$cwd" ]; then
+        cwd_sql=$(sql_escape "$cwd")
+        rollout=$(
+            sqlite3 -readonly "$state_db" \
+                "select rollout_path from threads where archived=0 and source='cli' and cwd='${cwd_sql}' order by recency_at_ms desc, updated_at_ms desc limit 1;" \
+                2>/dev/null
+        ) || true
+        if [ -n "$rollout" ] && [ -r "$rollout" ]; then
+            printf '%s\n' "$rollout"
+            return 0
+        fi
+    fi
+
+    rollout=$(
+        sqlite3 -readonly "$state_db" \
+            "select rollout_path from threads where archived=0 and source='cli' order by recency_at_ms desc, updated_at_ms desc limit 1;" \
+            2>/dev/null
+    ) || true
+    [ -n "$rollout" ] && [ -r "$rollout" ] || return 1
+    printf '%s\n' "$rollout"
+}
+
+codex_usage_info() {
+    command -v jq >/dev/null 2>&1 || return 1
+
+    local rollout payload
+    rollout=$(codex_rollout_path) || return 1
+    payload=$(
+        tail -n "${CODEX_HOST_STATUS_TOKEN_TAIL:-800}" "$rollout" 2>/dev/null |
+            jq -rc 'select(.type=="event_msg" and .payload.type=="token_count") | .payload' 2>/dev/null |
+            tail -n 1
+    ) || true
+    [ -n "$payload" ] || return 1
+
+    printf '%s\n' "$payload" | jq -r '
+        [
+            (.info.last_token_usage.input_tokens // 0),
+            (.info.model_context_window // 0),
+            (.info.total_token_usage.input_tokens // 0),
+            (.info.total_token_usage.cached_input_tokens // 0),
+            (.info.total_token_usage.output_tokens // 0),
+            (.info.total_token_usage.reasoning_output_tokens // 0),
+            (.info.total_token_usage.total_tokens // 0),
+            (.rate_limits.primary.used_percent // ""),
+            (.rate_limits.secondary.used_percent // "")
+        ] | @tsv
+    ' 2>/dev/null
+}
+
 cpu_pct_from_proc() {
     local stat total idle prev_total prev_idle delta_total delta_idle cache
     cache="${cache_prefix}.cpu"
@@ -153,10 +220,40 @@ fi
 cpu_pct=$(cpu_pct_from_proc || cpu_pct_from_load)
 cpu_temp=$(cpu_temp_c)
 mem_info=$(memory_info)
+codex_info=$(codex_usage_info || true)
 
 out=""
 if [ -n "$env_name" ]; then
     segment magenta "🐍 ${env_name}"
+fi
+
+if [ -n "$codex_info" ]; then
+    read -r ctx_input ctx_window total_input cached_input total_output reasoning_output total_tokens rate_5h rate_7d <<< "$codex_info"
+    if [ "${ctx_window:-0}" -gt 0 ] 2>/dev/null; then
+        ctx_pct=$(awk -v used="${ctx_input:-0}" -v total="${ctx_window:-0}" 'BEGIN { v=int(used*100/total); if (v>100) v=100; print v }')
+        segment "$(tcolor "$ctx_pct" 50 80)" "🧠 ${ctx_pct}%"
+    fi
+
+    uncached_input=$(( ${total_input:-0} - ${cached_input:-0} ))
+    if [ "$uncached_input" -lt 0 ] 2>/dev/null; then
+        uncached_input=0
+    fi
+    pseudo_cost=$(awk \
+        -v uncached="$uncached_input" \
+        -v cached="${cached_input:-0}" \
+        -v output="${total_output:-0}" \
+        'BEGIN { printf "%.2f", (uncached + cached * 0.1 + output * 4) / 1000000 }')
+    pseudo_cost_int=$(awk -v v="$pseudo_cost" 'BEGIN { print int(v) }')
+    segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost}u"
+
+    if [ -n "${rate_5h:-}" ]; then
+        rate_5h_int=$(awk -v v="$rate_5h" 'BEGIN { print int(v) }')
+        segment "$(tcolor "$rate_5h_int" 50 80)" "⏱5h ${rate_5h_int}%"
+    fi
+    if [ -n "${rate_7d:-}" ]; then
+        rate_7d_int=$(awk -v v="$rate_7d" 'BEGIN { print int(v) }')
+        segment "$(tcolor "$rate_7d_int" 50 80)" "📅7d ${rate_7d_int}%"
+    fi
 fi
 
 segment "$(tcolor "$cpu_pct" 50 80)" "⚙ CPU ${cpu_pct}% ${cpu_temp}C"
