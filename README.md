@@ -92,3 +92,5 @@ hash -r
 ## Why This Exists
 
 Codex's native status line is the better long-term home for this feature. Until Codex supports command-backed custom status-line segments, this wrapper gives Linux terminal users a practical host-status bar without patching Codex itself.
+
+Related upstream request: [openai/codex#17827](https://github.com/openai/codex/issues/17827).
