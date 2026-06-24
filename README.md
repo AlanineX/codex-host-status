@@ -5,7 +5,7 @@ Emoji system status for the Codex CLI.
 Codex has a built-in `tui.status_line`, but today it only accepts fixed item IDs. This project wraps interactive Codex sessions in a tiny `tmux` status bar so you can see host metrics while working:
 
 ```text
-🐍base 🧠45% 💰2.9u ⌛5h24% 📅7d4% 🧮4%/41c 🎮2%/43c/0.6G 💾10.1/47G 🕒14:29
+🐍 base 🧠 45% 💰 2.9u ⌛ 5h 24% 📅 7d 4% 🧮 CPU 4%/41c 🎮 GPU 2%/43c/0.6G 💾 RAM 10.1/47G 🕒 14:29
 ```
 
 It keeps normal Codex subcommands such as `codex exec`, `codex doctor`, `codex sandbox`, and `codex --version` untouched.
@@ -68,7 +68,7 @@ export CODEX_HOST_STATUS_TOKEN_TAIL=800
 export CODEX_HOST_STATUS_STYLE=auto  # auto | tiny | compact | long
 ```
 
-`auto` uses terminal width: tiny below 95 columns, compact below 135 columns, and long above that. Compact mode uses one-space gaps and removes repeated labels so the full bar fits ordinary terminal widths.
+`auto` uses terminal width: tiny below 95 columns, compact below 135 columns, and long above that. Compact mode uses one-space gaps between segments and keeps spaces inside each segment (`emoji label value`). Tiny mode keeps `CPU`, `GPU`, and `RAM` labels but drops secondary details such as temperatures and VRAM.
 
 Useful toggles:
 

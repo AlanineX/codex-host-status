@@ -257,6 +257,8 @@ out=""
 if [ -n "$env_name" ]; then
     if [ "$status_style" = "long" ]; then
         segment magenta "🐍 ${env_name}"
+    elif [ "$status_style" = "compact" ] || [ "$status_style" = "tiny" ]; then
+        segment magenta "🐍 $(shorten "$env_name" 10)"
     else
         segment magenta "🐍$(shorten "$env_name" 10)"
     fi
@@ -267,6 +269,8 @@ if [ -n "$codex_info" ]; then
     if [ "${ctx_window:-0}" -gt 0 ] 2>/dev/null; then
         ctx_pct=$(awk -v used="${ctx_input:-0}" -v total="${ctx_window:-0}" 'BEGIN { v=int(used*100/total); if (v>100) v=100; print v }')
         if [ "$status_style" = "long" ]; then
+            segment "$(tcolor "$ctx_pct" 50 80)" "🧠 ${ctx_pct}%"
+        elif [ "$status_style" = "compact" ] || [ "$status_style" = "tiny" ]; then
             segment "$(tcolor "$ctx_pct" 50 80)" "🧠 ${ctx_pct}%"
         else
             segment "$(tcolor "$ctx_pct" 50 80)" "🧠${ctx_pct}%"
@@ -287,10 +291,10 @@ if [ -n "$codex_info" ]; then
         segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost}u"
     elif [ "$status_style" = "tiny" ]; then
         pseudo_cost_short=$(awk -v v="$pseudo_cost" 'BEGIN { printf "%.1f", v }')
-        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰${pseudo_cost_short}"
+        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost_short}"
     else
         pseudo_cost_short=$(awk -v v="$pseudo_cost" 'BEGIN { printf "%.1f", v }')
-        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰${pseudo_cost_short}u"
+        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost_short}u"
     fi
 
     if [ -n "${rate_5h:-}" ]; then
@@ -298,9 +302,9 @@ if [ -n "$codex_info" ]; then
         if [ "$status_style" = "long" ]; then
             segment "$(tcolor "$rate_5h_int" 50 80)" "⌛ 5h ${rate_5h_int}%"
         elif [ "$status_style" = "tiny" ]; then
-            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛${rate_5h_int}%"
+            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛ 5h ${rate_5h_int}%"
         else
-            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛5h${rate_5h_int}%"
+            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛ 5h ${rate_5h_int}%"
         fi
     fi
     if [ -n "${rate_7d:-}" ]; then
@@ -308,9 +312,9 @@ if [ -n "$codex_info" ]; then
         if [ "$status_style" = "long" ]; then
             segment "$(tcolor "$rate_7d_int" 50 80)" "📅 7d ${rate_7d_int}%"
         elif [ "$status_style" = "tiny" ]; then
-            segment "$(tcolor "$rate_7d_int" 50 80)" "📅${rate_7d_int}%"
+            segment "$(tcolor "$rate_7d_int" 50 80)" "📅 7d ${rate_7d_int}%"
         else
-            segment "$(tcolor "$rate_7d_int" 50 80)" "📅7d${rate_7d_int}%"
+            segment "$(tcolor "$rate_7d_int" 50 80)" "📅 7d ${rate_7d_int}%"
         fi
     fi
 fi
@@ -320,10 +324,10 @@ case "$status_style" in
         segment "$(tcolor "$cpu_pct" 50 80)" "🧮 CPU ${cpu_pct}% ${cpu_temp}C"
         ;;
     tiny)
-        segment "$(tcolor "$cpu_pct" 50 80)" "🧮${cpu_pct}%"
+        segment "$(tcolor "$cpu_pct" 50 80)" "🧮 CPU ${cpu_pct}%"
         ;;
     *)
-        segment "$(tcolor "$cpu_pct" 50 80)" "🧮${cpu_pct}%/${cpu_temp}c"
+        segment "$(tcolor "$cpu_pct" 50 80)" "🧮 CPU ${cpu_pct}%/${cpu_temp}c"
         ;;
 esac
 
@@ -340,10 +344,10 @@ if [ -n "$gpu_line" ]; then
                 segment "$(tcolor "$gpu_util" 50 80)" "🎮 GPU ${gpu_util}% ${gpu_temp}C ${gpu_mem_gb}G"
                 ;;
             tiny)
-                segment "$(tcolor "$gpu_util" 50 80)" "🎮${gpu_util}%"
+                segment "$(tcolor "$gpu_util" 50 80)" "🎮 GPU ${gpu_util}%"
                 ;;
             *)
-                segment "$(tcolor "$gpu_util" 50 80)" "🎮${gpu_util}%/${gpu_temp}c/${gpu_mem_gb}G"
+                segment "$(tcolor "$gpu_util" 50 80)" "🎮 GPU ${gpu_util}%/${gpu_temp}c/${gpu_mem_gb}G"
                 ;;
         esac
     fi
@@ -356,15 +360,17 @@ if [ -n "$mem_info" ]; then
             segment "$(tcolor "$mem_pct" 50 80)" "💾 RAM ${mem_used_gb}/${mem_total_gb}G"
             ;;
         tiny)
-            segment "$(tcolor "$mem_pct" 50 80)" "💾${mem_used_gb}G"
+            segment "$(tcolor "$mem_pct" 50 80)" "💾 RAM ${mem_used_gb}G"
             ;;
         *)
-            segment "$(tcolor "$mem_pct" 50 80)" "💾${mem_used_gb}/${mem_total_gb}G"
+            segment "$(tcolor "$mem_pct" 50 80)" "💾 RAM ${mem_used_gb}/${mem_total_gb}G"
             ;;
     esac
 fi
 
 if [ "$status_style" = "long" ]; then
+    segment cyan "🕒 $(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
+elif [ "$status_style" = "compact" ] || [ "$status_style" = "tiny" ]; then
     segment cyan "🕒 $(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
 else
     segment cyan "🕒$(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
