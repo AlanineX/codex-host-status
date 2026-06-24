@@ -4,9 +4,31 @@ set -u
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
 mode="${1:-plain}"
-sep="${CODEX_HOST_STATUS_SEPARATOR:-  }"
 cache_dir="${XDG_RUNTIME_DIR:-/tmp}"
 cache_prefix="${cache_dir%/}/codex-host-status-${UID:-user}"
+status_columns="${CODEX_STATUS_COLUMNS:-${COLUMNS:-}}"
+if ! [ "$status_columns" -gt 0 ] 2>/dev/null; then
+    status_columns=$(tput cols 2>/dev/null || printf '120')
+fi
+
+status_style="${CODEX_HOST_STATUS_STYLE:-auto}"
+if [ "$status_style" = "auto" ]; then
+    if [ "$status_columns" -lt 95 ] 2>/dev/null; then
+        status_style="tiny"
+    elif [ "$status_columns" -lt 135 ] 2>/dev/null; then
+        status_style="compact"
+    else
+        status_style="long"
+    fi
+fi
+
+if [ -n "${CODEX_HOST_STATUS_SEPARATOR+x}" ]; then
+    sep="$CODEX_HOST_STATUS_SEPARATOR"
+elif [ "$status_style" = "long" ]; then
+    sep="  "
+else
+    sep=" "
+fi
 
 style() {
     if [ "$mode" = "--tmux" ]; then
@@ -39,6 +61,15 @@ segment() {
         out="${out}${sep}"
     fi
     out="${out}$(style "$color")${text}$(reset_style)"
+}
+
+shorten() {
+    local text="$1" max="$2"
+    if [ "${#text}" -le "$max" ]; then
+        printf '%s' "$text"
+    else
+        printf '%s+' "${text:0:$((max - 1))}"
+    fi
 }
 
 sql_escape() {
@@ -224,14 +255,22 @@ codex_info=$(codex_usage_info || true)
 
 out=""
 if [ -n "$env_name" ]; then
-    segment magenta "🐍 ${env_name}"
+    if [ "$status_style" = "long" ]; then
+        segment magenta "🐍 ${env_name}"
+    else
+        segment magenta "🐍$(shorten "$env_name" 10)"
+    fi
 fi
 
 if [ -n "$codex_info" ]; then
     read -r ctx_input ctx_window total_input cached_input total_output reasoning_output total_tokens rate_5h rate_7d <<< "$codex_info"
     if [ "${ctx_window:-0}" -gt 0 ] 2>/dev/null; then
         ctx_pct=$(awk -v used="${ctx_input:-0}" -v total="${ctx_window:-0}" 'BEGIN { v=int(used*100/total); if (v>100) v=100; print v }')
-        segment "$(tcolor "$ctx_pct" 50 80)" "🧠 ${ctx_pct}%"
+        if [ "$status_style" = "long" ]; then
+            segment "$(tcolor "$ctx_pct" 50 80)" "🧠 ${ctx_pct}%"
+        else
+            segment "$(tcolor "$ctx_pct" 50 80)" "🧠${ctx_pct}%"
+        fi
     fi
 
     uncached_input=$(( ${total_input:-0} - ${cached_input:-0} ))
@@ -244,19 +283,49 @@ if [ -n "$codex_info" ]; then
         -v output="${total_output:-0}" \
         'BEGIN { printf "%.2f", (uncached + cached * 0.1 + output * 4) / 1000000 }')
     pseudo_cost_int=$(awk -v v="$pseudo_cost" 'BEGIN { print int(v) }')
-    segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost}u"
+    if [ "$status_style" = "long" ]; then
+        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰 ${pseudo_cost}u"
+    elif [ "$status_style" = "tiny" ]; then
+        pseudo_cost_short=$(awk -v v="$pseudo_cost" 'BEGIN { printf "%.1f", v }')
+        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰${pseudo_cost_short}"
+    else
+        pseudo_cost_short=$(awk -v v="$pseudo_cost" 'BEGIN { printf "%.1f", v }')
+        segment "$(tcolor "$pseudo_cost_int" 2 10)" "💰${pseudo_cost_short}u"
+    fi
 
     if [ -n "${rate_5h:-}" ]; then
         rate_5h_int=$(awk -v v="$rate_5h" 'BEGIN { print int(v) }')
-        segment "$(tcolor "$rate_5h_int" 50 80)" "⏱5h ${rate_5h_int}%"
+        if [ "$status_style" = "long" ]; then
+            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛ 5h ${rate_5h_int}%"
+        elif [ "$status_style" = "tiny" ]; then
+            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛${rate_5h_int}%"
+        else
+            segment "$(tcolor "$rate_5h_int" 50 80)" "⌛5h${rate_5h_int}%"
+        fi
     fi
     if [ -n "${rate_7d:-}" ]; then
         rate_7d_int=$(awk -v v="$rate_7d" 'BEGIN { print int(v) }')
-        segment "$(tcolor "$rate_7d_int" 50 80)" "📅7d ${rate_7d_int}%"
+        if [ "$status_style" = "long" ]; then
+            segment "$(tcolor "$rate_7d_int" 50 80)" "📅 7d ${rate_7d_int}%"
+        elif [ "$status_style" = "tiny" ]; then
+            segment "$(tcolor "$rate_7d_int" 50 80)" "📅${rate_7d_int}%"
+        else
+            segment "$(tcolor "$rate_7d_int" 50 80)" "📅7d${rate_7d_int}%"
+        fi
     fi
 fi
 
-segment "$(tcolor "$cpu_pct" 50 80)" "⚙ CPU ${cpu_pct}% ${cpu_temp}C"
+case "$status_style" in
+    long)
+        segment "$(tcolor "$cpu_pct" 50 80)" "🧮 CPU ${cpu_pct}% ${cpu_temp}C"
+        ;;
+    tiny)
+        segment "$(tcolor "$cpu_pct" 50 80)" "🧮${cpu_pct}%"
+        ;;
+    *)
+        segment "$(tcolor "$cpu_pct" 50 80)" "🧮${cpu_pct}%/${cpu_temp}c"
+        ;;
+esac
 
 gpu_line=$(gpu_info || true)
 if [ -n "$gpu_line" ]; then
@@ -266,15 +335,39 @@ if [ -n "$gpu_line" ]; then
     gpu_mem_used=${gpu_mem_used// /}
     if [ -n "$gpu_util" ] && [ -n "$gpu_temp" ]; then
         gpu_mem_gb=$(awk -v mb="${gpu_mem_used:-0}" 'BEGIN { printf "%.1f", mb/1024 }')
-        segment "$(tcolor "$gpu_util" 50 80)" "🎮 GPU ${gpu_util}% ${gpu_temp}C ${gpu_mem_gb}G"
+        case "$status_style" in
+            long)
+                segment "$(tcolor "$gpu_util" 50 80)" "🎮 GPU ${gpu_util}% ${gpu_temp}C ${gpu_mem_gb}G"
+                ;;
+            tiny)
+                segment "$(tcolor "$gpu_util" 50 80)" "🎮${gpu_util}%"
+                ;;
+            *)
+                segment "$(tcolor "$gpu_util" 50 80)" "🎮${gpu_util}%/${gpu_temp}c/${gpu_mem_gb}G"
+                ;;
+        esac
     fi
 fi
 
 if [ -n "$mem_info" ]; then
     read -r mem_pct mem_used_gb mem_total_gb <<< "$mem_info"
-    segment "$(tcolor "$mem_pct" 50 80)" "💾 RAM ${mem_used_gb}/${mem_total_gb}G"
+    case "$status_style" in
+        long)
+            segment "$(tcolor "$mem_pct" 50 80)" "💾 RAM ${mem_used_gb}/${mem_total_gb}G"
+            ;;
+        tiny)
+            segment "$(tcolor "$mem_pct" 50 80)" "💾${mem_used_gb}G"
+            ;;
+        *)
+            segment "$(tcolor "$mem_pct" 50 80)" "💾${mem_used_gb}/${mem_total_gb}G"
+            ;;
+    esac
 fi
 
-segment cyan "🕒 $(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
+if [ "$status_style" = "long" ]; then
+    segment cyan "🕒 $(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
+else
+    segment cyan "🕒$(date +"${CODEX_HOST_STATUS_CLOCK_FORMAT:-%H:%M}")"
+fi
 
 printf '%s\n' "$out"
