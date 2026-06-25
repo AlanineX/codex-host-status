@@ -61,6 +61,7 @@ Set these environment variables before launching `codex`:
 export CODEX_STATUS_INTERVAL=5
 export CODEX_STATUS_LEFT_LENGTH=180
 export CODEX_STATUS_HISTORY_LIMIT=50000
+export CODEX_STATUS_MOUSE=off
 export CODEX_HOST_STATUS_GPU_INDEX=0
 export CODEX_HOST_STATUS_GPU_TTL=5
 export CODEX_HOST_STATUS_CLOCK_FORMAT="%H:%M"
@@ -87,9 +88,15 @@ CODEX_STATUS_INSTALL_WRAPPER=0 ./install.sh
 
 ## Scrolling
 
-The wrapper enables tmux mouse mode and launches interactive Codex with `--no-alt-screen` by default. Mouse wheel scrolling should move through the conversation transcript instead of cycling through prompt history.
+The wrapper launches interactive Codex with `--no-alt-screen` by default so terminal scrollback is preserved.
 
-In many terminals, text selection inside tmux uses `Shift` plus drag.
+tmux mouse mode is off by default because it captures drag selection and can make normal terminal copying feel broken. If you prefer tmux mouse behavior, opt in:
+
+```bash
+export CODEX_STATUS_MOUSE=on
+```
+
+With tmux mouse mode on, many terminals require `Shift` plus drag for native terminal selection.
 
 ## Uninstall
 

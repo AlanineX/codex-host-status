@@ -62,12 +62,23 @@ configure_tmux_status() {
     local target="$1"
     local interval="${CODEX_STATUS_INTERVAL:-5}"
     local left_length="${CODEX_STATUS_LEFT_LENGTH:-180}"
+    local mouse="${CODEX_STATUS_MOUSE:-off}"
+
+    case "$mouse" in
+        on|off) ;;
+        true|1|yes) mouse="on" ;;
+        false|0|no) mouse="off" ;;
+        *)
+            printf 'codex-status: invalid CODEX_STATUS_MOUSE=%s; expected on/off\n' "$mouse" >&2
+            mouse="off"
+            ;;
+    esac
 
     tmux set-option -t "$target" status on >/dev/null
     tmux set-option -t "$target" status-interval "$interval" >/dev/null
     tmux set-option -t "$target" status-position bottom >/dev/null
     tmux set-option -t "$target" status-style 'bg=colour235,fg=colour250' >/dev/null
-    tmux set-option -t "$target" mouse on >/dev/null
+    tmux set-option -t "$target" mouse "$mouse" >/dev/null
     tmux set-option -t "$target" history-limit "${CODEX_STATUS_HISTORY_LIMIT:-50000}" >/dev/null
     tmux set-option -t "$target" status-left "#(CODEX_STATUS_COLUMNS='#{client_width}' CODEX_STATUS_CWD='#{pane_current_path}' ${status_script} --tmux)" >/dev/null
     tmux set-option -t "$target" status-right '' >/dev/null
